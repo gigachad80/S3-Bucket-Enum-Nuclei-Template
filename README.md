@@ -168,11 +168,11 @@ regex:
 
 ### 🤔 Why This Project ?
 
-This project was created to enhance a paid Nuclei template I found on a Telegram channel. The original template was designed to scan for exposed AWS S3 buckets, but it lacked several features I thought could make it more effective. So, I decided to build on top of it and add more detailed detection, better matchers, and extended support for various S3 misconfigurations.🗿
+This project was created to enhance a paid Nuclei template I found on a Telegram channel. The original template was designed to scan for exposed AWS S3 buckets, but it lacked several features I thought could make it more effective. So, I decided to build on top of it and add more detailed detection, better matchers, and extended support for various S3 misconfigurations🗿.
 
 ### 💓 Credits:
 
- * Credits go to the original author of the paid AWS S3 scanner template shared on that Telegram channel , without their work, this upgrade wouldn't exist.😂
+ * Credits go to the original author of the paid AWS S3 scanner template shared on that Telegram channel , without his/her work, this upgrade wouldn't exist😂.
 
 ### ⌚ Total Time Taken to Develop & Test
 
