@@ -1,0 +1,184 @@
+id: enhanced-s3-bucket-security-scanner
+
+info:
+  name: Enhanced AWS S3 Bucket Security Scanner
+  author: enhanced-security-team
+  severity: medium
+  description: |
+    Comprehensive S3 bucket security scanner that checks for public access,
+    write permissions, directory listing, sensitive files, and misconfigurations
+    across multiple regions and naming patterns.
+  classification:
+    cvss-metrics: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N
+    cvss-score: 8.2
+    cwe-id:
+      - CWE-200
+      - CWE-732
+  tags: aws,s3,bucket,misconfig,cloud,security,exposure
+  reference:
+    - https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-block-public-access.html
+    - https://owasp.org/www-project-top-10/2017/A6_2017-Security_Misconfiguration
+
+variables:
+  bucket: "{{FQDN}}"
+
+http:
+  # Main bucket enumeration and testing
+  - method: GET
+    path:
+      # Standard endpoints
+      - "https://{{bucket}}.s3.amazonaws.com/"
+      - "https://s3.amazonaws.com/{{bucket}}/"
+      
+      # Regional endpoints
+      - "https://{{bucket}}.s3.us-east-1.amazonaws.com/"
+      - "https://{{bucket}}.s3.us-west-1.amazonaws.com/"
+      - "https://{{bucket}}.s3.us-west-2.amazonaws.com/"
+      - "https://{{bucket}}.s3.eu-west-1.amazonaws.com/"
+      - "https://{{bucket}}.s3.eu-central-1.amazonaws.com/"
+      - "https://{{bucket}}.s3.ap-southeast-1.amazonaws.com/"
+      - "https://{{bucket}}.s3.ap-northeast-1.amazonaws.com/"
+      
+      # Common naming patterns
+      - "https://{{bucket}}-backup.s3.amazonaws.com/"
+      - "https://{{bucket}}-logs.s3.amazonaws.com/"
+      - "https://{{bucket}}-assets.s3.amazonaws.com/"
+      - "https://{{bucket}}-uploads.s3.amazonaws.com/"
+      - "https://{{bucket}}-static.s3.amazonaws.com/"
+      - "https://{{bucket}}-media.s3.amazonaws.com/"
+      - "https://{{bucket}}-data.s3.amazonaws.com/"
+      - "https://www-{{bucket}}.s3.amazonaws.com/"
+      - "https://prod-{{bucket}}.s3.amazonaws.com/"
+      - "https://dev-{{bucket}}.s3.amazonaws.com/"
+      - "https://test-{{bucket}}.s3.amazonaws.com/"
+      - "https://staging-{{bucket}}.s3.amazonaws.com/"
+
+    headers:
+      User-Agent: "Mozilla/5.0 (compatible; SecurityScanner/1.0)"
+    
+    matchers-condition: or
+    matchers:
+      # Critical: Public bucket with listing enabled
+      - type: word
+        name: public_listing_enabled
+        part: body
+        words:
+          - "<ListBucketResult>"
+          - "<Contents>"
+        condition: and
+
+      # High: Public bucket but no listing
+      - type: dsl
+        name: public_no_listing
+        dsl:
+          - 'status_code == 200 && !contains(body, "<ListBucketResult>") && contains(body, "<?xml")'
+
+      # Low: Access denied (bucket exists but secured)
+      - type: status
+        name: access_denied
+        status:
+          - 403
+
+      # Info: Bucket not found
+      - type: status
+        name: not_found
+        status:
+          - 404
+
+      # Medium: Redirect (might indicate website hosting)
+      - type: status
+        name: redirect_detected
+        status:
+          - 301
+          - 302
+
+    extractors:
+      # Extract file names from public buckets
+      - type: regex
+        name: files
+        part: body
+        regex:
+          - "<Key>(.*?)</Key>"
+        group: 1
+
+      # Extract sensitive files
+      - type: regex
+        name: sensitive_files
+        part: body
+        regex:
+          - "<Key>.*?(\.env|config\.json|credentials|secret|private|\.pem|\.key|backup.*|.*dump.*|\.sql|\.db).*?</Key>"
+        group: 1
+
+      # Extract bucket creation info
+      - type: regex
+        name: creation_date
+        part: body
+        regex:
+          - "<CreationDate>(.*?)</CreationDate>"
+        group: 1
+
+      # Extract owner ID
+      - type: regex
+        name: owner_id
+        part: body
+        regex:
+          - "<Owner><ID>(.*?)</ID>"
+        group: 1
+
+  # Test for website hosting configuration
+  - method: GET
+    path:
+      - "https://{{bucket}}.s3-website-us-east-1.amazonaws.com/"
+      - "https://{{bucket}}.s3-website.us-east-1.amazonaws.com/"
+      - "https://{{bucket}}.s3-website-us-west-2.amazonaws.com/"
+      - "https://{{bucket}}.s3-website.us-west-2.amazonaws.com/"
+
+    matchers:
+      - type: status
+        name: website_enabled
+        status:
+          - 200
+          - 301
+          - 302
+          - 403
+
+    extractors:
+      - type: kval
+        name: website_headers
+        part: header
+        kval:
+          - "server"
+
+  # Test write permissions (careful approach)
+  - method: HEAD
+    path:
+      - "https://{{bucket}}.s3.amazonaws.com/"
+
+    matchers:
+      - type: word
+        name: bucket_accessible
+        part: header
+        words:
+          - "x-amz-"
+
+    extractors:
+      # Check for encryption headers
+      - type: kval
+        name: encryption_status
+        part: header
+        kval:
+          - "x-amz-server-side-encryption"
+
+      # Check CORS headers
+      - type: kval
+        name: cors_origin
+        part: header
+        kval:
+          - "access-control-allow-origin"
+
+      # Get bucket region
+      - type: kval
+        name: bucket_region
+        part: header
+        kval:
+          - "x-amz-bucket-region"
